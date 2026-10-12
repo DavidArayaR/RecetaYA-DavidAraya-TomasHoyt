@@ -1,0 +1,22 @@
+# Build outputs
+**/target/
+
+# IDE and OS files
+**/.idea/
+**/.vscode/
+.DS_Store
+Thumbs.db
+~$*
+
+# Local H2 database files and logs
+**/data/
+**/*.mv.db
+**/*.trace.db
+**/*.lock.db
+
+# Workspace-only material
+qa-*/
+recetya-ya/inventario.zip
+EP2_JVY0101_Estudiante.pdf
+inventario.zip
+**/inventario.zip
