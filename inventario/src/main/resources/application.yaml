@@ -1,3 +1,30 @@
 spring:
+  profiles:
+    default: desarrollo
   application:
     name: inventario
+  task:
+    scheduling:
+      pool:
+        size: 2
+  datasource:
+    url: jdbc:h2:mem:inventario;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:bd/migracion
+
+recetaya:
+  seguridad:
+    jwt:
+      emisor: ${RECETAYA_JWT_EMISOR:http://localhost:8081}
+      secreto: ${RECETAYA_JWT_SECRETO:}
+  integracion:
+    sqs:
+      habilitada: ${RECETAYA_SQS_HABILITADA:false}
+      solicitudes: ${RECETAYA_SQS_SOLICITUDES:}
+      resultados: ${RECETAYA_SQS_RESULTADOS:}
