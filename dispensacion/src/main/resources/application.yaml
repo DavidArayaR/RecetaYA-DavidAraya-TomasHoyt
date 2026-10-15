@@ -1,3 +1,40 @@
 spring:
   application:
     name: dispensacion
+  datasource:
+    url: ${RECETAYA_DISPENSACION_BD:jdbc:h2:file:./data/dispensacion-recetaya;DB_CLOSE_ON_EXIT=FALSE}
+    username: ${RECETAYA_DISPENSACION_USUARIO:recetaya}
+    password: ${RECETAYA_DISPENSACION_CLAVE:recetaya-local}
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    locations: classpath:bd/migracion
+    baseline-on-migrate: false
+  h2:
+    console:
+      enabled: ${RECETAYA_DISPENSACION_CONSOLA:true}
+      path: /consola-h2
+
+server:
+  port: 8083
+  address: 127.0.0.1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+recetaya:
+  seguridad:
+    jwt:
+      emisor: ${RECETAYA_JWT_EMISOR:http://localhost:8081}
+      secreto: ${RECETAYA_JWT_SECRETO:}
+  integracion:
+    inventario:
+      sqs-habilitada: ${RECETAYA_SQS_HABILITADA:false}
+      solicitudes: ${RECETAYA_SQS_SOLICITUDES:}
+      resultados-dispensacion: ${RECETAYA_SQS_RESULTADOS_DISPENSACION:}
