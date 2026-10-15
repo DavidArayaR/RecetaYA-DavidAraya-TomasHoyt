@@ -1,0 +1,19 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:auth-prueba;DB_CLOSE_DELAY=-1
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:bd/migracion
+  h2:
+    console:
+      enabled: false
+
+recetaya:
+  seguridad:
+    jwt:
+      secreto: clave-de-prueba-local-sin-uso-en-produccion-123456
+      emisor: http://localhost:8081
