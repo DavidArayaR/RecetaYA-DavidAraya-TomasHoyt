@@ -41,11 +41,13 @@ public class ConfiguracionSeguridadDispensacion {
     @Bean
     SecurityFilterChain cadenaSeguridadDispensacion(HttpSecurity http) throws Exception {
         http.authorizeHttpRequests(autorizacion -> autorizacion
-                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                .requestMatchers("/consola-h2", "/consola-h2/**").permitAll()
                 .requestMatchers("/api/v1/dispensaciones", "/api/v1/dispensaciones/**")
                     .hasRole("FARMACEUTICO")
                 .anyRequest().denyAll())
                 .csrf(AbstractHttpConfigurer::disable)
+                .headers(cabeceras -> cabeceras.frameOptions(opciones -> opciones.sameOrigin()))
                 .sessionManagement(sesion -> sesion.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .oauth2ResourceServer(recurso -> recurso.jwt(jwt -> jwt.jwtAuthenticationConverter(
                         convertidorAutenticacion())));
