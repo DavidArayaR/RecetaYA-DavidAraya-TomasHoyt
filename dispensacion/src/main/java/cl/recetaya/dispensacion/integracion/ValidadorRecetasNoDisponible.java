@@ -2,9 +2,7 @@ package cl.recetaya.dispensacion.integracion;
 
 import cl.recetaya.dispensacion.excepcion.IntegracionNoDisponibleException;
 import java.util.UUID;
-import org.springframework.stereotype.Component;
 
-@Component
 public class ValidadorRecetasNoDisponible implements ValidadorRecetas {
     @Override
     public RecetaDispensable consultarRecetaDispensable(UUID recetaId) {
