@@ -13,6 +13,7 @@ public record RespuestaReceta(
         UUID medicoUsuarioId,
         UUID sucursalId,
         EstadoReceta estado,
+        String codigoRechazo,
         Instant fechaEmision,
         List<MedicamentoRespuesta> medicamentos
 ) {
@@ -27,6 +28,7 @@ public record RespuestaReceta(
                 receta.getMedicoUsuarioId(),
                 receta.getSucursalId(),
                 receta.getEstado(),
+                receta.getCodigoRechazo(),
                 receta.getFechaEmision().toInstant(ZoneOffset.UTC),
                 receta.getDetalles().stream()
                         .map(detalle -> new MedicamentoRespuesta(detalle.getMedicamentoId(), detalle.getCantidad()))

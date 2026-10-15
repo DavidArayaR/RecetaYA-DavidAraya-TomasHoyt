@@ -25,11 +25,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class ServicioRecetas {
     private final RepositorioReceta repositorioReceta;
     private final RepositorioPaciente repositorioPaciente;
+    private final ServicioSolicitudesReserva servicioSolicitudesReserva;
     private final Clock reloj;
 
-    public ServicioRecetas(RepositorioReceta repositorioReceta, RepositorioPaciente repositorioPaciente) {
+    public ServicioRecetas(RepositorioReceta repositorioReceta, RepositorioPaciente repositorioPaciente,
+                           ServicioSolicitudesReserva servicioSolicitudesReserva) {
         this.repositorioReceta = repositorioReceta;
         this.repositorioPaciente = repositorioPaciente;
+        this.servicioSolicitudesReserva = servicioSolicitudesReserva;
         this.reloj = Clock.systemUTC();
     }
 
@@ -40,7 +43,9 @@ public class ServicioRecetas {
         Receta receta = new Receta(paciente, medicoUsuarioId, solicitud.sucursalId(),
                 LocalDateTime.now(reloj));
         solicitud.medicamentos().forEach(m -> receta.agregarDetalle(m.medicamentoId(), m.cantidad()));
-        return RespuestaReceta.desde(repositorioReceta.save(receta));
+        Receta guardada = repositorioReceta.save(receta);
+        servicioSolicitudesReserva.crearPara(guardada);
+        return RespuestaReceta.desde(guardada);
     }
 
     @Transactional(readOnly = true)
@@ -50,7 +55,7 @@ public class ServicioRecetas {
 
     @Transactional(readOnly = true)
     public List<RespuestaReceta> listar(UUID medicoUsuarioId) {
-        return repositorioReceta.findByMedicoUsuarioIdOrderByFechaEmisionDesc(medicoUsuarioId)
+        return repositorioReceta.listarPorMedico(medicoUsuarioId)
                 .stream().map(RespuestaReceta::desde).toList();
     }
 
@@ -75,6 +80,7 @@ public class ServicioRecetas {
             }
         }
         receta.getDetalles().removeIf(detalle -> !nuevosIds.contains(detalle.getMedicamentoId()));
+        servicioSolicitudesReserva.actualizarPendiente(receta);
         return RespuestaReceta.desde(receta);
     }
 
@@ -82,12 +88,13 @@ public class ServicioRecetas {
     public RespuestaReceta anular(UUID recetaId, UUID medicoUsuarioId) {
         Receta receta = obtenerPropia(recetaId, medicoUsuarioId);
         exigirPendiente(receta);
+        servicioSolicitudesReserva.cancelarPendiente(recetaId);
         receta.anular();
         return RespuestaReceta.desde(receta);
     }
 
     private Receta obtenerPropia(UUID recetaId, UUID medicoUsuarioId) {
-        return repositorioReceta.findByIdAndMedicoUsuarioId(recetaId, medicoUsuarioId)
+        return repositorioReceta.buscarPropia(recetaId, medicoUsuarioId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("No se encontró la receta solicitada."));
     }
 
@@ -100,7 +107,7 @@ public class ServicioRecetas {
     private Paciente obtenerOCrearPaciente(SolicitudReceta.PacienteSolicitud solicitud) {
         String documento = solicitud.documento().trim();
         String nombre = solicitud.nombre().trim();
-        return repositorioPaciente.findByDocumento(documento).map(existente -> {
+        return repositorioPaciente.buscarPorDocumento(documento).map(existente -> {
             if (!existente.getNombre().equals(nombre)) {
                 throw new ConflictoRecetaException("El documento ya corresponde a un paciente con otro nombre.");
             }
