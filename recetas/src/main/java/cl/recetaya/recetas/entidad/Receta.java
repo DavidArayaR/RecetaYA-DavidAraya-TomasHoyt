@@ -39,6 +39,9 @@ public class Receta {
     @Column(name = "fecha_emision", nullable = false)
     private LocalDateTime fechaEmision;
 
+    @Column(name = "codigo_rechazo", length = 64)
+    private String codigoRechazo;
+
     @OneToMany(mappedBy = "receta", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<RecetaDetalle> detalles = new ArrayList<>();
 
@@ -60,6 +63,14 @@ public class Receta {
 
     public void anular() { this.estado = EstadoReceta.ANULADA; }
 
+    public void registrarResultadoReserva(boolean confirmada, String codigoRechazo) {
+        if (estado != EstadoReceta.ACEPTADA_PENDIENTE_RESERVA) {
+            return;
+        }
+        estado = confirmada ? EstadoReceta.RESERVADA : EstadoReceta.RESERVA_RECHAZADA;
+        this.codigoRechazo = confirmada ? null : codigoRechazo;
+    }
+
     public void agregarDetalle(UUID medicamentoId, int cantidad) {
         detalles.add(new RecetaDetalle(this, medicamentoId, cantidad));
     }
@@ -70,5 +81,6 @@ public class Receta {
     public UUID getSucursalId() { return sucursalId; }
     public EstadoReceta getEstado() { return estado; }
     public LocalDateTime getFechaEmision() { return fechaEmision; }
+    public String getCodigoRechazo() { return codigoRechazo; }
     public List<RecetaDetalle> getDetalles() { return detalles; }
 }

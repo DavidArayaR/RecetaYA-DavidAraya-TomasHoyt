@@ -14,8 +14,13 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
@@ -26,18 +31,33 @@ import java.nio.charset.StandardCharsets;
 
 @Configuration
 public class ConfiguracionSeguridad {
+    @Value("${recetaya.seguridad.jwt.emisor}")
+    private String emisor;
+
     @Bean
     SecurityFilterChain cadenaSeguridad(HttpSecurity http) throws Exception {
         http.csrf(AbstractHttpConfigurer::disable)
                 .headers(cabeceras -> cabeceras.frameOptions(marco -> marco.sameOrigin()))
                 .sessionManagement(sesion -> sesion.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(autorizacion -> autorizacion
-                        .requestMatchers("/api/v1/autenticacion/registro", "/api/v1/autenticacion/iniciar-sesion").permitAll()
+                        .requestMatchers("/api/v1/autenticacion/registro", "/api/v1/autenticacion/iniciar-sesion", "/api/v1/auth/login").permitAll()
+                        .requestMatchers("/api/v1/autenticacion/perfil").hasAnyRole("MEDICO", "FARMACEUTICO")
                         .requestMatchers("/consola-h2/**", "/actuator/health").permitAll()
                         .anyRequest().denyAll())
                 .httpBasic(basico -> basico.disable())
-                .formLogin(formulario -> formulario.disable());
+                .formLogin(formulario -> formulario.disable())
+                .oauth2ResourceServer(recursos -> recursos.jwt(jwt -> jwt.jwtAuthenticationConverter(convertidorJwt())));
         return http.build();
+    }
+
+    @Bean
+    JwtAuthenticationConverter convertidorJwt() {
+        JwtGrantedAuthoritiesConverter convertidorRoles = new JwtGrantedAuthoritiesConverter();
+        convertidorRoles.setAuthoritiesClaimName("roles");
+        convertidorRoles.setAuthorityPrefix("ROLE_");
+        JwtAuthenticationConverter convertidor = new JwtAuthenticationConverter();
+        convertidor.setJwtGrantedAuthoritiesConverter(convertidorRoles);
+        return convertidor;
     }
 
     @Bean
@@ -72,5 +92,14 @@ public class ConfiguracionSeguridad {
     @Bean
     JwtEncoder codificadorJwt(SecretKey claveJwt) {
         return new NimbusJwtEncoder(new ImmutableSecret<>(claveJwt));
+    }
+
+    @Bean
+    JwtDecoder decodificadorJwt(SecretKey claveJwt) {
+        NimbusJwtDecoder decodificador = NimbusJwtDecoder.withSecretKey(claveJwt)
+                .macAlgorithm(org.springframework.security.oauth2.jose.jws.MacAlgorithm.HS256)
+                .build();
+        decodificador.setJwtValidator(JwtValidators.createDefaultWithIssuer(emisor));
+        return decodificador;
     }
 }

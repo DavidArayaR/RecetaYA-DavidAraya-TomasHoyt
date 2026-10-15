@@ -1,7 +1,12 @@
 package cl.recetaya.inventario.controlador;
 
+import cl.recetaya.inventario.entidad.ClaveExistenciaSucursal;
+import cl.recetaya.inventario.repositorio.RepositorioExistenciaSucursal;
+import cl.recetaya.inventario.servicio.ServicioReservas;
+import cl.recetaya.inventario.transferencia.MedicamentoSolicitado;
 import cl.recetaya.inventario.transferencia.SolicitudMedicamento;
 import cl.recetaya.inventario.transferencia.RespuestaMedicamento;
+import cl.recetaya.inventario.transferencia.SolicitudReserva;
 import cl.recetaya.inventario.transferencia.SolicitudSucursal;
 import cl.recetaya.inventario.transferencia.RespuestaSucursal;
 import cl.recetaya.inventario.servicio.ServicioInventario;
@@ -17,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -33,6 +39,8 @@ class PruebasControladorInventario {
 
     @Autowired private MockMvc clienteSimulado;
     @Autowired private ServicioInventario servicio;
+    @Autowired private ServicioReservas servicioReservas;
+    @Autowired private RepositorioExistenciaSucursal repositorioExistencias;
 
     @Test
     void inventarioVacioDevuelveColeccionVacia() throws Exception {
@@ -100,6 +108,56 @@ class PruebasControladorInventario {
         clienteSimulado.perform(get(RUTA_BASE + "/sucursales/" + sucursal.id() + "/existencias/" + medicamento.id()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nombreMedicamento").value("Vitamina C"));
+    }
+
+    @Test
+    void eliminaMedicamentosYSucursalesSinReferencias() throws Exception {
+        RespuestaMedicamento medicamento = servicio.crearMedicamento(
+                new SolicitudMedicamento("MED-ELIMINAR", "Temporal", null));
+        RespuestaSucursal sucursal = servicio.crearSucursal(new SolicitudSucursal("Temporal", null));
+
+        clienteSimulado.perform(delete(RUTA_BASE + "/medicamentos/" + medicamento.id()))
+                .andExpect(status().isNoContent());
+        clienteSimulado.perform(delete(RUTA_BASE + "/sucursales/" + sucursal.id()))
+                .andExpect(status().isNoContent());
+        clienteSimulado.perform(get(RUTA_BASE + "/medicamentos/" + medicamento.id()))
+                .andExpect(status().isNotFound());
+        clienteSimulado.perform(get(RUTA_BASE + "/sucursales/" + sucursal.id()))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void rechazaEliminarCatalogosConExistenciasReferenciadas() throws Exception {
+        RespuestaMedicamento medicamento = servicio.crearMedicamento(
+                new SolicitudMedicamento("MED-PROTEGIDO", "Con existencias", null));
+        RespuestaSucursal sucursal = servicio.crearSucursal(new SolicitudSucursal("Con existencias", null));
+        servicio.actualizarExistencias(sucursal.id(), medicamento.id(), 5);
+
+        clienteSimulado.perform(delete(RUTA_BASE + "/medicamentos/" + medicamento.id()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigoEstado").value(409));
+        clienteSimulado.perform(delete(RUTA_BASE + "/sucursales/" + sucursal.id()))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.codigoEstado").value(409));
+    }
+
+    @Test
+    void conservaCatalogosReferenciadosPorHistorialDeReserva() throws Exception {
+        RespuestaMedicamento medicamento = servicio.crearMedicamento(
+                new SolicitudMedicamento("MED-HISTORIAL", "Con reserva histórica", null));
+        RespuestaSucursal sucursal = servicio.crearSucursal(new SolicitudSucursal("Con reserva histórica", null));
+        UUID recetaId = UUID.randomUUID();
+        servicio.actualizarExistencias(sucursal.id(), medicamento.id(), 5);
+        servicioReservas.reservar(new SolicitudReserva(recetaId, sucursal.id(),
+                java.util.List.of(new MedicamentoSolicitado(medicamento.id(), 2))));
+
+        repositorioExistencias.deleteById(new ClaveExistenciaSucursal(sucursal.id(), medicamento.id()));
+        repositorioExistencias.flush();
+
+        clienteSimulado.perform(delete(RUTA_BASE + "/medicamentos/" + medicamento.id()))
+                .andExpect(status().isConflict());
+        clienteSimulado.perform(delete(RUTA_BASE + "/sucursales/" + sucursal.id()))
+                .andExpect(status().isConflict());
     }
 
     @Test

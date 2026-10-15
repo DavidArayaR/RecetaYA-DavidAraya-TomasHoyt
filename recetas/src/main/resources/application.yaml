@@ -21,6 +21,13 @@ recetaya:
     jwt:
       emisor: ${RECETAYA_JWT_EMISOR:http://localhost:8081}
       secreto: ${RECETAYA_JWT_SECRETO:}
+  integracion:
+    sqs:
+      habilitada: ${RECETAYA_SQS_HABILITADA:false}
+      solicitudes: ${RECETAYA_SQS_SOLICITUDES:}
+      resultados-recetas: ${RECETAYA_SQS_RESULTADOS_RECETAS:}
+      max-intentos: 5
+      demora-ms: 3000
 
 server:
   port: 8082

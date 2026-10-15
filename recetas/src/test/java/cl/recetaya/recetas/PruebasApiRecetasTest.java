@@ -7,6 +7,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import cl.recetaya.recetas.entidad.EstadoPublicacionReserva;
+import cl.recetaya.recetas.repositorio.RepositorioSolicitudReserva;
+import cl.recetaya.recetas.servicio.ServicioResultadosReserva;
+import cl.recetaya.recetas.transferencia.EventoSolicitudInventario;
+import cl.recetaya.recetas.transferencia.ResultadoSolicitudInventario;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -19,6 +24,7 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -36,6 +42,15 @@ class PruebasApiRecetasTest {
 
     @Autowired
     MockMvc mvc;
+
+    @Autowired
+    RepositorioSolicitudReserva repositorioSolicitudes;
+
+    @Autowired
+    ServicioResultadosReserva servicioResultados;
+
+    @Autowired
+    ObjectMapper serializador;
 
     private org.springframework.test.web.servlet.request.RequestPostProcessor medico(UUID id) {
         return jwt().jwt(token -> token.subject(id.toString()).claim("roles", List.of("MEDICO")))
@@ -70,6 +85,16 @@ class PruebasApiRecetasTest {
     @Test
     void crearConsultarYListarSoloPropias() throws Exception {
         String id = idCreado(crear("PAC-101"));
+        var solicitudReserva = repositorioSolicitudes.buscarPorRecetaId(UUID.fromString(id)).orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals(EstadoPublicacionReserva.PENDIENTE,
+                solicitudReserva.getEstadoPublicacion());
+        EventoSolicitudInventario evento = serializador.readValue(
+                solicitudReserva.getCuerpoJson(), EventoSolicitudInventario.class);
+        org.junit.jupiter.api.Assertions.assertEquals("RESERVAR", evento.tipoOperacion());
+        org.junit.jupiter.api.Assertions.assertEquals(UUID.fromString(id), evento.recetaId());
+        org.junit.jupiter.api.Assertions.assertEquals(MEDICAMENTO, evento.medicamentos().getFirst().medicamentoId());
+        org.junit.jupiter.api.Assertions.assertNotNull(evento.fechaHora());
+        org.junit.jupiter.api.Assertions.assertFalse(solicitudReserva.getCuerpoJson().contains("Ana Pérez"));
         mvc.perform(get(RUTA + "/" + id).with(medico(MEDICO)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(id));
         mvc.perform(get(RUTA).with(medico(MEDICO)))
@@ -90,6 +115,8 @@ class PruebasApiRecetasTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.medicamentos[0].cantidad").value(5));
         mvc.perform(post(RUTA + "/" + id + "/anular").with(medico(MEDICO)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.estado").value("ANULADA"));
+        org.junit.jupiter.api.Assertions.assertEquals(EstadoPublicacionReserva.CANCELADO,
+                repositorioSolicitudes.buscarPorRecetaId(UUID.fromString(id)).orElseThrow().getEstadoPublicacion());
         mvc.perform(put(RUTA + "/" + id).with(medico(MEDICO))
                         .contentType(MediaType.APPLICATION_JSON).content(solicitud("PAC-102", 3)))
                 .andExpect(status().isConflict());
@@ -130,6 +157,10 @@ class PruebasApiRecetasTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.medicamentos.length()").value(1))
                 .andExpect(jsonPath("$.medicamentos[0].medicamentoId").value(otroMedicamento.toString()));
+        String cuerpoReserva = repositorioSolicitudes.buscarPorRecetaId(UUID.fromString(id))
+                .orElseThrow().getCuerpoJson();
+        org.junit.jupiter.api.Assertions.assertTrue(cuerpoReserva.contains(otroMedicamento.toString()));
+        org.junit.jupiter.api.Assertions.assertFalse(cuerpoReserva.contains(MEDICAMENTO.toString()));
         mvc.perform(get(RUTA + "/" + id).with(medico(MEDICO)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.medicamentos.length()").value(1))
@@ -147,5 +178,54 @@ class PruebasApiRecetasTest {
                                 .authorities(new SimpleGrantedAuthority("ROLE_FARMACEUTICO")))
                         .contentType(MediaType.APPLICATION_JSON).content(solicitud("PAC-104", 2)))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void procesaConfirmacionUnaSolaVezYNoRetrocedePorUnResultadoPosterior() throws Exception {
+        String id = idCreado(crear("PAC-106"));
+        var solicitud = repositorioSolicitudes.buscarPorRecetaId(UUID.fromString(id)).orElseThrow();
+        UUID eventoId = UUID.randomUUID();
+        ResultadoSolicitudInventario confirmacion = new ResultadoSolicitudInventario(eventoId,
+                solicitud.getMensajeId(), solicitud.getCorrelacionId(), "RESERVAR", UUID.fromString(id),
+                "CONFIRMADA", null, "Reserva creada.", null, java.time.Instant.now());
+
+        servicioResultados.procesar(confirmacion);
+        servicioResultados.procesar(confirmacion);
+        servicioResultados.procesar(new ResultadoSolicitudInventario(UUID.randomUUID(),
+                solicitud.getMensajeId(), solicitud.getCorrelacionId(), "RESERVAR", UUID.fromString(id),
+                "RECHAZADA", "EXISTENCIAS_INSUFICIENTES", "Sin existencias.", null,
+                java.time.Instant.now()));
+
+        mvc.perform(get(RUTA + "/" + id).with(medico(MEDICO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("RESERVADA"))
+                .andExpect(jsonPath("$.codigoRechazo").doesNotExist());
+    }
+
+    @Test
+    void rechazaResultadosQueNoCoincidenConLaCorrelacionRegistrada() throws Exception {
+        String id = idCreado(crear("PAC-107"));
+        var solicitud = repositorioSolicitudes.buscarPorRecetaId(UUID.fromString(id)).orElseThrow();
+        ResultadoSolicitudInventario resultado = new ResultadoSolicitudInventario(UUID.randomUUID(),
+                UUID.randomUUID(), solicitud.getCorrelacionId(), "RESERVAR", UUID.fromString(id),
+                "CONFIRMADA", null, "Reserva creada.", null, java.time.Instant.now());
+
+        org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
+                () -> servicioResultados.procesar(resultado));
+    }
+
+    @Test
+    void registraRechazoDeInventarioSinMarcarLaRecetaComoReservada() throws Exception {
+        String id = idCreado(crear("PAC-108"));
+        var solicitud = repositorioSolicitudes.buscarPorRecetaId(UUID.fromString(id)).orElseThrow();
+        servicioResultados.procesar(new ResultadoSolicitudInventario(UUID.randomUUID(),
+                solicitud.getMensajeId(), solicitud.getCorrelacionId(), "RESERVAR", UUID.fromString(id),
+                "RECHAZADA", "EXISTENCIAS_INSUFICIENTES", "No hay existencias suficientes.", null,
+                java.time.Instant.now()));
+
+        mvc.perform(get(RUTA + "/" + id).with(medico(MEDICO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("RESERVA_RECHAZADA"))
+                .andExpect(jsonPath("$.codigoRechazo").value("EXISTENCIAS_INSUFICIENTES"));
     }
 }
