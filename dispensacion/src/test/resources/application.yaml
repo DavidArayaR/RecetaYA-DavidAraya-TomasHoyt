@@ -1,0 +1,5 @@
+recetaya:
+  seguridad:
+    jwt:
+      emisor: http://localhost:8081
+      secreto: clave-de-prueba-local-no-secreta-32-caracteres

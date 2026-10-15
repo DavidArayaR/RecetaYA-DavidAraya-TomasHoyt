@@ -1,3 +1,13 @@
 spring:
   application:
     name: dispensacion
+
+server:
+  port: 8083
+  address: 127.0.0.1
+
+recetaya:
+  seguridad:
+    jwt:
+      emisor: ${RECETAYA_JWT_EMISOR:http://localhost:8081}
+      secreto: ${RECETAYA_JWT_SECRETO:}
