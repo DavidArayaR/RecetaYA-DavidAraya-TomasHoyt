@@ -1,3 +1,34 @@
 spring:
   application:
     name: recetas
+  datasource:
+    url: jdbc:h2:file:./data/recetas-recetaya
+    driver-class-name: org.h2.Driver
+    username: sa
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:bd/migracion
+  h2:
+    console:
+      enabled: false
+
+recetaya:
+  seguridad:
+    jwt:
+      emisor: ${RECETAYA_JWT_EMISOR:http://localhost:8081}
+      secreto: ${RECETAYA_JWT_SECRETO:}
+  integracion:
+    sqs:
+      habilitada: ${RECETAYA_SQS_HABILITADA:false}
+      solicitudes: ${RECETAYA_SQS_SOLICITUDES:}
+      resultados-recetas: ${RECETAYA_SQS_RESULTADOS_RECETAS:}
+      max-intentos: 5
+      demora-ms: 3000
+
+server:
+  port: 8082
+  address: 127.0.0.1
